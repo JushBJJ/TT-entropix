@@ -1,0 +1,13 @@
+jaxlib[cpu]==0.4.33;
+flax==0.9.0
+tiktoken==0.4.0
+pydantic==2.9.2
+tyro==0.8.11
+blobfile==3.0.0
+ml-dtypes==0.5.0
+rich==13.8.1
+# torch==2.4.1+cu124 default torch version by TT is already provided in tt-metal/python_env/
+pytest==8.3.2
+ruff==0.6.2
+transformers==4.45.1
+fairscale==0.4.13
