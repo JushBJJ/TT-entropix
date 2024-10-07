@@ -46,17 +46,19 @@ def load_weights(ckpt_dir: Path = Path('weights/1B-Instruct'), n_layers: int = 1
     for file in ckpt_dir.glob("*.npy"):
       name = '.'.join(str(file).split('/')[-1].split('.')[:-1])
       print(f"Loading weight: {name}")
-      np_weight = np.load(file, allow_pickle=True)
-      np_weight = np_weight.view(np.uint16)
-      np_weight_float = np_weight.astype(np.float32)
-      np_weight_bfloat16 = np_weight_float.astype(jnp.bfloat16)
-      weight = torch.from_numpy(np_weight_bfloat16.astype(np.float32)).to(torch.bfloat16)
+      np_weight = np.load(file, mmap_mode="r", allow_pickle=True)
+      np_weight_bfloat16 = np_weight.view(jnp.bfloat16)
+      np_weight_float32 = np_weight_bfloat16.astype(np.float32)
+      weight = torch.from_numpy(np_weight_float32).to(torch.bfloat16)
+      
+      w[name] = weight.to(device)
     
       #! Skip these for now
       # np_weight = np_weight.view(np.uint16).view(jnp.bfloat16)
       # jax_weight = jnp.array(np_weight)
       # weight = torch.from_numpy(np.array(jax_weight)).to(torch.bfloat16)
       # compare_outputs(torch_output=weight, jax_output=jax_weight)
+
       w[name] = weight.to(device)
     for i in range(n_layers):
       layer_weights.append(LayerWeights(
