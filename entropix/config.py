@@ -12,7 +12,7 @@ params = {
   "norm_eps": 1e-05,
   "rope_theta": 500000.0,
   "use_scaled_rope": True,
-  "max_seq_len": 4096
+  "max_seq_len": 2048,
 }
 
 
@@ -33,5 +33,4 @@ LLAMA_1B_PARAMS = ModelParams(
   head_dim=params["dim"] // params["n_heads"],
   max_seq_len=params["max_seq_len"],
   rope_theta=params["rope_theta"],
-  use_scaled_rope=params["use_scaled_rope"]
-)
+  use_scaled_rope=params["use_scaled_rope"],)
