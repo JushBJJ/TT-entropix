@@ -24,6 +24,7 @@ class ModelParams(NamedTuple):
   max_seq_len: int
   rope_theta: float
   use_scaled_rope: bool
+  vocab_size: int
 
 
 LLAMA_1B_PARAMS = ModelParams(
@@ -33,4 +34,6 @@ LLAMA_1B_PARAMS = ModelParams(
   head_dim=params["dim"] // params["n_heads"],
   max_seq_len=params["max_seq_len"],
   rope_theta=params["rope_theta"],
-  use_scaled_rope=params["use_scaled_rope"],)
+  use_scaled_rope=params["use_scaled_rope"],
+  vocab_size=params["vocab_size"],
+)

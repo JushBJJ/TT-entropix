@@ -24,10 +24,10 @@ class TTNNXfmrWeights(NamedTuple):
     output: ttnn.Tensor
     layer_weights: List[TTNNLayerWeights]
 
-def xfmr_weight_to_ttnn(weight: torch.Tensor, device: ttnn.Device, transpose=True):
+def xfmr_weight_to_ttnn(weight: torch.Tensor, device: ttnn.Device, transpose=True, layout=ttnn.TILE_LAYOUT) -> ttnn.Tensor:
     if transpose:
-        return ttnn.from_torch(weight.T.contiguous(), dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
-    return ttnn.from_torch(weight.contiguous(), dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+        return ttnn.from_torch(weight.T.contiguous(), dtype=ttnn.bfloat16, device=device, layout=layout)
+    return ttnn.from_torch(weight.contiguous(), dtype=ttnn.bfloat16, device=device, layout=layout)
 
 def convert_to_ttnn_layer_weights(xfmr_layer_weights: LayerWeights, device: ttnn.Device) -> TTNNLayerWeights:
     print("Converting layer weights to ttnn...")
@@ -45,6 +45,7 @@ def convert_to_ttnn_layer_weights(xfmr_layer_weights: LayerWeights, device: ttnn
 
 def convert_to_ttnn_xfmr_weights(xfmr_weights: XfmrWeights, device: ttnn.Device) -> TTNNXfmrWeights:
     return TTNNXfmrWeights(
+        # TODO: Put tok_embeddings as ROW_MAJOR???
         tok_embeddings = xfmr_weight_to_ttnn(xfmr_weights.tok_embeddings, device),
         norm = xfmr_weight_to_ttnn(xfmr_weights.norm, device, transpose=False),
         output = xfmr_weight_to_ttnn(xfmr_weights.output, device),
