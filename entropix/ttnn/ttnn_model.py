@@ -76,7 +76,7 @@ def ttnn_xfmr(
     kvcache: TTNN_KVCache, 
     # device: ttnn.Device, # TODO: Add this arg in when AttnStats can be converted to ttnn
     attn_mask: Optional[ttnn.Tensor] = None
-) -> Tuple[ttnn.Tensor, TTNN_KVCache, ttnn.Tensor, TTNNAttnStats]:
+) -> Tuple[ttnn.Tensor, TTNN_KVCache, ttnn.Tensor, AttnStats]:
     h = ttnn.embedding(tokens, xfmr_weights.tok_embeddings, layout=ttnn.TILE_LAYOUT)
     attn_stats = AttnStats.new(
         bsz=tokens.shape[0],
