@@ -46,7 +46,7 @@ def convert_to_ttnn_layer_weights(xfmr_layer_weights: LayerWeights, device: ttnn
 def convert_to_ttnn_xfmr_weights(xfmr_weights: XfmrWeights, device: ttnn.Device) -> TTNNXfmrWeights:
     return TTNNXfmrWeights(
         # TODO: Put tok_embeddings as ROW_MAJOR???
-        tok_embeddings = xfmr_weight_to_ttnn(xfmr_weights.tok_embeddings, device),
+        tok_embeddings = xfmr_weight_to_ttnn(xfmr_weights.tok_embeddings, device, transpose=False, layout=ttnn.ROW_MAJOR_LAYOUT),
         norm = xfmr_weight_to_ttnn(xfmr_weights.norm, device, transpose=False),
         output = xfmr_weight_to_ttnn(xfmr_weights.output, device),
         layer_weights = [convert_to_ttnn_layer_weights(layer, device) for layer in xfmr_weights.layer_weights]
