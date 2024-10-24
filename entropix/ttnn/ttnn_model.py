@@ -3,9 +3,11 @@ import math
 import torch
 
 from typing import Tuple, Optional
-from entropix.ttnn.ttnn_weights import TTNNLayerWeights
+from entropix.ttnn.ttnn_weights import TTNNLayerWeights, TTNNXfmrWeights
+from entropix.ttnn.ttnn_kvcache import TTNN_KVCache
 from entropix.ttnn.utils import nearest_32
-from entropix.config import LLAMA_1B_PARAMS
+from entropix.config import LLAMA_1B_PARAMS, ModelParams
+from entropix.torch_stats import AttnStats
 
 head_dim = LLAMA_1B_PARAMS.head_dim
 rope_theta = LLAMA_1B_PARAMS.rope_theta
@@ -19,25 +21,13 @@ def ttnn_rms_norm(x: ttnn.Tensor, w: ttnn.Tensor) -> ttnn.Tensor:
 def ttnn_feedforward(x: ttnn.Tensor, layer_weights: TTNNLayerWeights) -> ttnn.Tensor:
     return ttnn.linear(ttnn.silu(ttnn.linear(x, layer_weights.w1)) * ttnn.linear(x, layer_weights.w3), layer_weights.w2)
 
-def ttnn_apply_rotary_emb(xq: ttnn.Tensor, xk: ttnn.Tensor, cos: ttnn.Tensor, sin: ttnn.Tensor, trans_mat: ttnn.Tensor, device: ttnn.Device) -> Tuple[torch.Tensor, torch.Tensor]:
-    # Can't set dtype to float32 because GS doesn't support float32
-    # Also rotary_embedding_llama only supports bfloat16
-    # see tt-metal/ttnn/operations/transformer/rotary_embedding_llama/device/rotary_embedding_llama_device_operation.cpp
-    xq = ttnn.experimental.rotary_embedding(xq, cos, sin)
-    xk = ttnn.experimental.rotary_embedding(xk, cos, sin)
-    return xq, xk
-
 def ttnn_attention(
     x: ttnn.Tensor, 
     layer_weights: TTNNLayerWeights, 
     model_params, 
-    cur_pos: int, 
-    layer_idx: int,
     cos: ttnn.Tensor,
     sin: ttnn.Tensor,
-    trans_mat: ttnn.Tensor,
-    kv_cache: ttnn.Tensor,
-    device: ttnn.Device,
+    kv_cache: TTNN_KVCache,
     attn_mask: Optional[ttnn.Tensor] = None
 ) -> ttnn.Tensor:
     # This implementation may be wrong (TODO: FIX)
@@ -46,7 +36,7 @@ def ttnn_attention(
     head_dim = model_params.head_dim
     n_heads = model_params.n_local_heads
     n_kv_heads = model_params.n_local_kv_heads
-    n_rep = n_heads // n_kv_heads  # For GQA support
+    n_rep = n_heads // n_kv_heads
     
     xq = ttnn.linear(x, layer_weights.wq).reshape((1, batch_size * n_heads, seq_len, head_dim))
     xk = ttnn.linear(x, layer_weights.wk).reshape((1, batch_size * n_kv_heads, seq_len, head_dim))
@@ -76,3 +66,47 @@ def ttnn_attention(
     )
     out = ttnn.linear(output.reshape((batch_size, seq_len, n_heads * head_dim)), layer_weights.wo)
     return out, kv_cache, pre_scores
+
+def ttnn_xfmr(
+    xfmr_weights: TTNNXfmrWeights, 
+    model_params: ModelParams, 
+    tokens: ttnn.Tensor, 
+    cos: ttnn.Tensor, 
+    sin: ttnn.Tensor, 
+    kvcache: TTNN_KVCache, 
+    # device: ttnn.Device, # TODO: Add this arg in when AttnStats can be converted to ttnn
+    attn_mask: Optional[ttnn.Tensor] = None
+) -> Tuple[ttnn.Tensor, TTNN_KVCache, ttnn.Tensor, TTNNAttnStats]:
+    h = ttnn.embedding(tokens, xfmr_weights.tok_embeddings, layout=ttnn.TILE_LAYOUT)
+    attn_stats = AttnStats.new(
+        bsz=tokens.shape[0],
+        n_layers=model_params.n_layers,
+        n_heads=model_params.n_local_heads
+    )
+    
+    for i in range(model_params.n_layers):
+        norm_x = ttnn_rms_norm(h, xfmr_weights.layer_weights[i].attention_norm)
+        h_attn, kvcache, scores = ttnn_attention(
+            norm_x,
+            xfmr_weights.layer_weights[i],
+            model_params,
+            cos,
+            sin,
+            kvcache,
+            attn_mask
+        )
+        
+        # TTNN slicing is not so good yet so fallback to torch
+        scores = ttnn.to_torch(scores)
+
+        last_pos_scores = scores[:,:,-1,:]
+        attn_stats = attn_stats.update(last_pos_scores, i)
+        h = h + h_attn
+        norm_x = ttnn_rms_norm(h, xfmr_weights.layer_weights[i].ffn_norm)
+        h_ffn = ttnn_feedforward(norm_x, xfmr_weights.layer_weights[i])
+        h = h + h_ffn
+
+    h = ttnn_rms_norm(h, xfmr_weights.norm)
+    logits = ttnn.linear(h, xfmr_weights.output)
+    
+    return logits, kvcache, scores, attn_stats
